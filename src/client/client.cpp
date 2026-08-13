@@ -96,15 +96,15 @@ void Client::DoReadBody(std::size_t length) {
                        self->CloseSocket();
                        return;
                      }
-                     std::string frame;
-                     frame.reserve(sms::net::FrameCodec::kHeaderSize + self->body_.size());
-                     frame.append(self->header_.data(), sms::net::FrameCodec::kHeaderSize);
-                     frame.append(self->body_);
-                     sms::net::DecodedFrame decoded;
-                     if (self->codec_.Decode(frame, &decoded) != sms::net::DecodeStatus::kOk) {
-                       self->CloseSocket();
-                       return;
-                     }
+                      std::string frame;
+                      frame.reserve(sms::net::FrameCodec::kHeaderSize + self->body_.size());
+                      frame.append(self->header_.data(), sms::net::FrameCodec::kHeaderSize);
+                      frame.append(self->body_);
+                      sms::net::DecodedFrame decoded;
+                      if (self->codec_.Decode(frame, &decoded) != sms::net::DecodeStatus::kOk) {
+                        self->CloseSocket();
+                        return;
+                      }
                      self->on_message_(std::move(decoded.payload));
                      self->DoReadHeader();
                    }));
@@ -117,12 +117,19 @@ void Client::DoWrite() {
     return;
   }
   writing_ = true;
+  auto self = shared_from_this();
   std::string frame = std::move(write_queue_.front());
   write_queue_.pop_front();
-  auto self = shared_from_this();
-  asio::async_write(socket_, asio::buffer(frame),
-                    asio::bind_executor(strand_, [self](const asio::error_code& ec,
-                                                        std::size_t) {
+  // The buffer must cover the frame for the whole write. A move into the
+  // completion handler would leave the buffer dangling for small frames
+  // (SSO: the move copies the inline storage, and the original dies when this
+  // function returns), so the completion handler owns the frame and the
+  // buffer is built from that same owned object.
+  auto owned = std::make_shared<std::string>(std::move(frame));
+  asio::async_write(socket_, asio::buffer(*owned),
+                    asio::bind_executor(strand_, [self, owned = std::move(owned)](
+                                                     const asio::error_code& ec,
+                                                     std::size_t) {
                       if (ec) {
                         self->CloseSocket();
                         return;
