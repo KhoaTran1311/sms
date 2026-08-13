@@ -2,7 +2,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdint>
 #include <random>
 #include <string>
 #include <string_view>
@@ -10,14 +9,13 @@
 
 namespace sms::net {
 namespace {
-
 std::string_view ToStringView(const std::vector<std::uint8_t>& bytes) {
   return std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
 
 // Deterministic seed for RoundTrip_RandomPayloads: fixed PRNG so the test is
 // reproducible; the constant is the reproduction seed.
-constexpr std::uint32_t kRandomSeed = 0x504F3034;
+constexpr std::uint32_t RandomSeed = 0x504F3034;
 
 TEST(FrameCodecTest, RoundTrip_SmallJson) {
   const FrameCodec codec;
@@ -26,7 +24,7 @@ TEST(FrameCodecTest, RoundTrip_SmallJson) {
   ASSERT_TRUE(codec.Encode(payload, &out));
   ASSERT_EQ(out.size(), 4 + payload.size());
   DecodedFrame frame;
-  ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::Ok);
   EXPECT_EQ(frame.payload, payload);
   EXPECT_EQ(frame.total, 4 + payload.size());
 }
@@ -37,14 +35,14 @@ TEST(FrameCodecTest, RoundTrip_EmptyPayload) {
   ASSERT_TRUE(codec.Encode("", &out));
   ASSERT_EQ(out.size(), 4);
   DecodedFrame frame;
-  ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::Ok);
   EXPECT_TRUE(frame.payload.empty());
   EXPECT_EQ(frame.total, 4);
 }
 
 TEST(FrameCodecTest, RoundTrip_RandomPayloads) {
   const FrameCodec codec;
-  std::mt19937 rng(kRandomSeed);
+  std::mt19937 rng(RandomSeed);
   std::uniform_int_distribution<std::size_t> size_dist(0, 8192);
   std::uniform_int_distribution<int> byte_dist(0, 255);
   for (int i = 0; i < 1000; ++i) {
@@ -57,8 +55,8 @@ TEST(FrameCodecTest, RoundTrip_RandomPayloads) {
     ASSERT_TRUE(codec.Encode(payload, &out)) << "encode failed for payload #" << i;
     ASSERT_EQ(out.size(), 4 + size) << "payload #" << i;
     DecodedFrame frame;
-    ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::kOk)
-        << "decode failed for payload #" << i;
+    ASSERT_EQ(codec.Decode(ToStringView(out), &frame), DecodeStatus::Ok)
+      << "decode failed for payload #" << i;
     EXPECT_EQ(frame.payload, payload) << "payload #" << i;
     EXPECT_EQ(frame.total, 4 + size) << "payload #" << i;
   }
@@ -79,31 +77,45 @@ TEST_P(FrameCodecDecodeTest, Decodes) {
   DecodedFrame frame;
   const DecodeStatus status = codec.Decode(GetParam().buffer, &frame);
   EXPECT_EQ(status, GetParam().expected_status);
-  if (status == DecodeStatus::kOk) {
+  if (status == DecodeStatus::Ok) {
     EXPECT_EQ(frame.payload, GetParam().expected_payload);
     EXPECT_EQ(frame.total, GetParam().expected_total);
   }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Decode, FrameCodecDecodeTest,
-    ::testing::Values(
-        DecodeCase{"Decode_TruncatedHeader_OneByte", std::string("\x00", 1),
-                   DecodeStatus::kNeedsMoreData, "", 0},
-        DecodeCase{"Decode_TruncatedHeader_ThreeBytes", std::string("\x00\x00\x05", 3),
-                   DecodeStatus::kNeedsMoreData, "", 0},
-        DecodeCase{"Decode_TruncatedBody",
-                   std::string("\x00\x00\x00\x05" "AB", 6),
-                   DecodeStatus::kNeedsMoreData, "", 0},
-        DecodeCase{"Decode_ZeroLengthBody", std::string("\x00\x00\x00\x00", 4),
-                   DecodeStatus::kOk, "", 4},
-        DecodeCase{"Decode_OversizedLength",
-                   std::string("\x00\x02\x00\x00" "junk", 8),
-                   DecodeStatus::kLengthExceedsMax, "", 0},
-        DecodeCase{"Decode_OversizedLength_ZeroBody",
-                   std::string("\x00\x02\x00\x00", 4),
-                   DecodeStatus::kLengthExceedsMax, "", 0}),
-    [](const ::testing::TestParamInfo<DecodeCase>& info) { return info.param.name; });
+  Decode, FrameCodecDecodeTest,
+  ::testing::Values(
+    DecodeCase{
+      "Decode_TruncatedHeader_OneByte", std::string("\x00", 1),
+      DecodeStatus::NeedsMoreData, "", 0
+    },
+    DecodeCase{
+      "Decode_TruncatedHeader_ThreeBytes", std::string("\x00\x00\x05", 3),
+      DecodeStatus::NeedsMoreData, "", 0
+    },
+    DecodeCase{
+      "Decode_TruncatedBody",
+      std::string("\x00\x00\x00\x05" "AB", 6),
+      DecodeStatus::NeedsMoreData, "", 0
+    },
+    DecodeCase{
+      "Decode_ZeroLengthBody", std::string("\x00\x00\x00\x00", 4),
+      DecodeStatus::Ok, "", 4
+    },
+    DecodeCase{
+      "Decode_OversizedLength",
+      std::string("\x00\x02\x00\x00" "junk", 8),
+      DecodeStatus::LengthExceedsMax, "", 0
+    },
+    DecodeCase{
+      "Decode_OversizedLength_ZeroBody",
+      std::string("\x00\x02\x00\x00", 4),
+      DecodeStatus::LengthExceedsMax, "", 0
+    }
+  ),
+  [](const ::testing::TestParamInfo<DecodeCase>& info) { return info.param.name; }
+);
 
 TEST(FrameCodecTest, Decode_MaxPayloadSize_Exact) {
   const FrameCodec codec;
@@ -111,7 +123,7 @@ TEST(FrameCodecTest, Decode_MaxPayloadSize_Exact) {
   std::string buffer("\x00\x01\x00\x00", 4);
   buffer += body;
   DecodedFrame frame;
-  ASSERT_EQ(codec.Decode(buffer, &frame), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(buffer, &frame), DecodeStatus::Ok);
   EXPECT_EQ(frame.payload.size(), 65536);
   EXPECT_EQ(frame.payload, body);
   EXPECT_EQ(frame.total, 4 + 65536);
@@ -119,7 +131,7 @@ TEST(FrameCodecTest, Decode_MaxPayloadSize_Exact) {
 
 TEST(FrameCodecTest, Encode_Rejects_Oversized) {
   const FrameCodec codec;
-  const std::vector<std::uint8_t> original = {1, 2, 3, 4};
+  const std::vector<std::uint8_t> original = { 1, 2, 3, 4 };
   std::vector<std::uint8_t> out = original;
   const std::string payload(65537, 'x');
   EXPECT_FALSE(codec.Encode(payload, &out));
@@ -143,7 +155,8 @@ TEST(FrameCodecTest, ByteOrder_BigEndian_Vector) {
   std::vector<std::uint8_t> out;
   ASSERT_TRUE(codec.Encode("ABCD", &out));
   const std::vector<std::uint8_t> expected = {
-      0x00, 0x00, 0x00, 0x04, 0x41, 0x42, 0x43, 0x44};
+    0x00, 0x00, 0x00, 0x04, 0x41, 0x42, 0x43, 0x44
+  };
   EXPECT_EQ(out, expected);
 }
 
@@ -157,12 +170,12 @@ TEST(FrameCodecTest, Decode_TwoFrames_InOneBuffer) {
 
   const std::string_view view = ToStringView(buffer);
   DecodedFrame first;
-  ASSERT_EQ(codec.Decode(view, &first), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(view, &first), DecodeStatus::Ok);
   EXPECT_EQ(first.payload, "a");
   EXPECT_EQ(first.total, 5);
 
   DecodedFrame second_frame;
-  ASSERT_EQ(codec.Decode(view.substr(first.total), &second_frame), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(view.substr(first.total), &second_frame), DecodeStatus::Ok);
   EXPECT_EQ(second_frame.payload, "bcd");
   EXPECT_EQ(second_frame.total, 7);
 }
@@ -175,24 +188,24 @@ TEST(FrameCodecTest, Decode_SecondFrame_Truncated) {
 
   const std::string_view view = ToStringView(buffer);
   DecodedFrame first;
-  ASSERT_EQ(codec.Decode(view, &first), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(view, &first), DecodeStatus::Ok);
   EXPECT_EQ(first.payload, "hi");
   EXPECT_EQ(first.total, 6);
 
   DecodedFrame second;
-  EXPECT_EQ(codec.Decode(view.substr(first.total), &second), DecodeStatus::kNeedsMoreData);
+  EXPECT_EQ(codec.Decode(view.substr(first.total), &second), DecodeStatus::NeedsMoreData);
 }
 
 TEST(FrameCodecTest, Decode_DoesNotModifyInput) {
   const FrameCodec codec;
   std::vector<std::uint8_t> frame;
   ASSERT_TRUE(codec.Encode("hi", &frame));
-  frame.insert(frame.end(), {'X', 'X', 'Y', 'Y'});
+  frame.insert(frame.end(), { 'X', 'X', 'Y', 'Y' });
   const std::string input(ToStringView(frame));
   const std::string before = input;
 
   DecodedFrame decoded;
-  ASSERT_EQ(codec.Decode(input, &decoded), DecodeStatus::kOk);
+  ASSERT_EQ(codec.Decode(input, &decoded), DecodeStatus::Ok);
   EXPECT_EQ(decoded.payload, "hi");
   EXPECT_EQ(decoded.total, 6);
   EXPECT_EQ(input, before);
@@ -206,9 +219,9 @@ TEST(FrameCodecTest, Encode_EmptyOutput_SafeReuse) {
 
   ASSERT_TRUE(codec.Encode("second", &out));
   const std::vector<std::uint8_t> expected = {
-      0x00, 0x00, 0x00, 0x06, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64};
+    0x00, 0x00, 0x00, 0x06, 0x73, 0x65, 0x63, 0x6F, 0x6E, 0x64
+  };
   EXPECT_EQ(out, expected);
 }
-
-}  // namespace
-}  // namespace sms::net
+} // namespace
+} // namespace sms::net
