@@ -7,22 +7,21 @@
 #include <vector>
 
 namespace sms::net {
-
 enum class DecodeStatus {
-  kOk,               // a complete frame was decoded from the front of the buffer
-  kNeedsMoreData,    // buffer holds a partial frame (short header or short body)
-  kLengthExceedsMax, // header length field > kMaxPayloadSize (protocol error)
+  Ok, // a complete frame was decoded from the front of the buffer
+  NeedsMoreData, // buffer holds a partial frame (short header or short body)
+  LengthExceedsMax, // header length field > kMaxPayloadSize (protocol error)
 };
 
 struct DecodedFrame {
   std::string payload; // opaque payload bytes (JSON text in v0, protobuf in v1)
-  std::size_t total;   // total bytes consumed for this frame (header + payload)
+  std::size_t total; // total bytes consumed for this frame (header + payload)
 };
 
 class FrameCodec {
- public:
-  static constexpr std::size_t kHeaderSize = 4;
-  static constexpr std::size_t kMaxPayloadSize = 64 * 1024;  // matches D1.10
+public:
+  static constexpr std::size_t HeaderSize = 4;
+  static constexpr std::size_t MaxPayloadSize = 64 * 1024; // matches D1.10
 
   // Prepends the 4-byte big-endian length to `payload`. Returns false (and
   // leaves *out untouched) if payload.size() > kMaxPayloadSize.
@@ -34,5 +33,4 @@ class FrameCodec {
   //   kLengthExceedsMax: caller treats it as a protocol violation.
   DecodeStatus Decode(std::string_view buffer, DecodedFrame* out) const;
 };
-
-}  // namespace sms::net
+} // namespace sms::net
