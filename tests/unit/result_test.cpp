@@ -8,7 +8,6 @@
 
 namespace sms::common {
 namespace {
-
 TEST(ResultTest, Ok_ProvidesValue) {
   Result<int> r = Result<int>::Ok(42);
   EXPECT_TRUE(r.ok());
@@ -17,21 +16,21 @@ TEST(ResultTest, Ok_ProvidesValue) {
 }
 
 TEST(ResultTest, Err_ReportsCodeAndMessage) {
-  Result<int> r = Result<int>::Err(Error::Make(ErrorCode::kIoError, "socket gone"));
+  Result<int> r = Result<int>::Err(Error::Make(ErrorCode::IoError, "socket gone"));
   EXPECT_FALSE(r.ok());
   EXPECT_FALSE(r.has_value());
-  EXPECT_EQ(ErrorCode::kIoError, r.error().code);
+  EXPECT_EQ(ErrorCode::IoError, r.error().code);
   EXPECT_EQ("socket gone", r.error().message);
 }
 
 TEST(ResultTest, Value_OnError_ThrowsLogicError) {
-  Result<int> r = Result<int>::Err(Error::Make(ErrorCode::kInternal, "boom"));
+  Result<int> r = Result<int>::Err(Error::Make(ErrorCode::Internal, "boom"));
   EXPECT_THROW(r.value(), std::logic_error);
 }
 
 TEST(ResultTest, TakeValue_Moves) {
   Result<std::unique_ptr<int>> r =
-      Result<std::unique_ptr<int>>::Ok(std::make_unique<int>(7));
+    Result<std::unique_ptr<int>>::Ok(std::make_unique<int>(7));
   std::unique_ptr<int> moved = r.TakeValue();
   EXPECT_EQ(7, *moved);
 }
@@ -44,17 +43,16 @@ TEST(ResultTest, ResultVoid_Ok) {
 }
 
 TEST(ResultTest, ResultVoid_Err) {
-  Result<void> r = Result<void>::Err(Error::Make(ErrorCode::kDisconnected, "peer left"));
+  Result<void> r = Result<void>::Err(Error::Make(ErrorCode::Disconnected, "peer left"));
   EXPECT_FALSE(r.ok());
-  EXPECT_EQ(ErrorCode::kDisconnected, r.error().code);
+  EXPECT_EQ(ErrorCode::Disconnected, r.error().code);
   EXPECT_THROW(r.value(), std::logic_error);
 }
 
 TEST(ResultTest, Error_Make_Helper) {
-  Error e = Error::Make(ErrorCode::kIoError, "x");
-  EXPECT_EQ(ErrorCode::kIoError, e.code);
+  Error e = Error::Make(ErrorCode::IoError, "x");
+  EXPECT_EQ(ErrorCode::IoError, e.code);
   EXPECT_EQ("x", e.message);
 }
-
-}  // namespace
-}  // namespace sms::common
+} // namespace
+} // namespace sms::common

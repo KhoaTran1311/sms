@@ -55,16 +55,16 @@ class Result {
   std::variant<T, Error> data_;
 };
 
-// Result<void> specialization storing only the Error; Ok() is the kNone
+// Result<void> specialization storing only the Error; Ok() is the None
 // success sentinel.
 template <>
 class Result<void> {
  public:
-  static Result Ok() { return Result(Error{ErrorCode::kNone, {}}); }
+  static Result Ok() { return Result(Error{ErrorCode::None, {}}); }
 
   static Result Err(Error error) { return Result(std::move(error)); }
 
-  bool ok() const { return error_.code == ErrorCode::kNone; }
+  bool ok() const { return error_.code == ErrorCode::None; }
   bool has_value() const { return ok(); }
 
   void value() const {
