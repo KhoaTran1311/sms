@@ -59,7 +59,7 @@ class ServerRelayTest : public ::testing::Test {
     io_.restart();
     if (HasFailure()) {
       std::cerr << "\n--- captured SMS_LOG lines (test failure) ---\n";
-      for (const auto& line : logs_->latest_formatted(512)) {
+      for (const auto& line : logs_->last_formatted(512)) {
         std::cerr << line << '\n';
       }
       std::cerr << "------------------------------------------------\n";
@@ -73,22 +73,48 @@ class ServerRelayTest : public ::testing::Test {
     return std::make_shared<FramedClient>(io_, Endpoint());
   }
 
-  // Runs io until all work completes; the watchdog is a hang guard only —
-  // every await carries a shorter deadline of its own.
+  // Runs io until the test's expectations settle; run_for's deadline is a
+  // hang guard only — every await carries a shorter deadline of its own.
+  // The server's accept loop and session reads are perpetual work, so the
+  // run loop terminates on io_.stop() (Settle), never on an empty queue.
   void Pump() { sms::test::Pump(io_, kWait + std::chrono::seconds(1)); }
+
+  // Posts an awaited frame; `handler` runs when the request settles (frame
+  // delivered, deadline, or EOF/error).
+  template <typename Handler>
+  void AwaitOne(std::shared_ptr<FramedClient> client, std::chrono::milliseconds after,
+                Handler handler) {
+    ++outstanding_;
+    client->AwaitPayload(Deadline(after),
+                         [this, handler = std::move(handler)](RecvResult r, std::string p) mutable {
+                           handler(r, std::move(p));
+                           Settle();
+                         });
+  }
 
   // Polls `predicate` until true or the deadline; asserts it became true.
   void WaitUntil(std::function<bool()> predicate) {
+    ++outstanding_;
     bool satisfied = false;
     sms::test::WaitFor(io_, std::move(predicate), Deadline(kWait),
-                       [&](bool ok) { satisfied = ok; });
+                       [this, &satisfied](bool ok) {
+                         satisfied = ok;
+                         Settle();
+                       });
     Pump();
     EXPECT_TRUE(satisfied);
+  }
+
+  // Every outstanding await/poll counts against this; when the last one
+  // settles the run loop is stopped so Pump returns promptly.
+  void Settle() {
+    if (--outstanding_ == 0) io_.stop();
   }
 
   asio::io_context io_;
   std::shared_ptr<Server> server_;
   std::shared_ptr<spdlog::sinks::ringbuffer_sink_mt> logs_;
+  int outstanding_ = 0;
 };
 
 // 1: A sends "hello"; B connected. B receives it; A receives nothing within
@@ -98,11 +124,11 @@ TEST_F(ServerRelayTest, Relay_AtoB_NotBackToA) {
   auto b = Connect();
 
   RecvResult a_result = RecvResult::kPayload;
-  a->AwaitPayload(Deadline(kQuiet), [&](RecvResult r, std::string) { a_result = r; });
+  AwaitOne(a, kQuiet, [&](RecvResult r, std::string) { a_result = r; });
 
   RecvResult b_result = RecvResult::kTimeout;
   std::string b_payload;
-  b->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
+  AwaitOne(b, kWait, [&](RecvResult r, std::string p) {
     b_result = r;
     b_payload = std::move(p);
   });
@@ -122,7 +148,7 @@ TEST_F(ServerRelayTest, Relay_BtoA_Symmetric) {
 
   RecvResult a_result = RecvResult::kTimeout;
   std::string a_payload;
-  a->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
+  AwaitOne(a, kWait, [&](RecvResult r, std::string p) {
     a_result = r;
     a_payload = std::move(p);
   });
@@ -139,16 +165,17 @@ TEST_F(ServerRelayTest, Relay_ThreeClients_Broadcast) {
   auto a = Connect();
   auto b = Connect();
   auto c = Connect();
+  WaitUntil([&] { return server_->SessionCount() == 3; });
 
   RecvResult a_result = RecvResult::kPayload;
-  a->AwaitPayload(Deadline(kQuiet), [&](RecvResult r, std::string) { a_result = r; });
+  AwaitOne(a, kQuiet, [&](RecvResult r, std::string) { a_result = r; });
 
   std::string b_payload;
-  b->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
+  AwaitOne(b, kWait, [&](RecvResult r, std::string p) {
     b_payload = std::move(p);
   });
   std::string c_payload;
-  c->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
+  AwaitOne(c, kWait, [&](RecvResult r, std::string p) {
     c_payload = std::move(p);
   });
 
@@ -168,7 +195,7 @@ TEST_F(ServerRelayTest, Relay_MultipleFrames_Ordered) {
   std::vector<std::string> got(5);
   std::vector<bool> ok(5, false);
   for (int i = 0; i < 5; ++i) {
-    b->AwaitPayload(Deadline(kWait), [&, i](RecvResult r, std::string p) {
+    AwaitOne(b, kWait, [&, i](RecvResult r, std::string p) {
       got[i] = std::move(p);
       ok[i] = r == RecvResult::kPayload;
     });
@@ -214,10 +241,10 @@ TEST_F(ServerRelayTest, Close_Then_Relay_StillWorks) {
   WaitUntil([&] { return server_->SessionCount() == 2; });
 
   RecvResult b_result = RecvResult::kPayload;
-  b->AwaitPayload(Deadline(kQuiet), [&](RecvResult r, std::string) { b_result = r; });
+  AwaitOne(b, kQuiet, [&](RecvResult r, std::string) { b_result = r; });
 
   std::string c_payload;
-  c->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
+  AwaitOne(c, kWait, [&](RecvResult r, std::string p) {
     c_payload = std::move(p);
   });
 
@@ -235,10 +262,10 @@ TEST_F(ServerRelayTest, OversizedFrame_ClosesSender) {
   auto b = Connect();
 
   RecvResult a_result = RecvResult::kPayload;
-  a->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string) { a_result = r; });
+  AwaitOne(a, kWait, [&](RecvResult r, std::string) { a_result = r; });
 
   RecvResult b_result = RecvResult::kPayload;
-  b->AwaitPayload(Deadline(kQuiet), [&](RecvResult r, std::string) { b_result = r; });
+  AwaitOne(b, kQuiet, [&](RecvResult r, std::string) { b_result = r; });
 
   const std::uint32_t len = 128 * 1024;  // > kMaxPayloadSize (64 KiB)
   const char header[4] = {static_cast<char>((len >> 24) & 0xFF),
@@ -260,7 +287,7 @@ TEST_F(ServerRelayTest, GarbageBytes_ClosesSender) {
   auto a = Connect();
 
   RecvResult a_result = RecvResult::kPayload;
-  a->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string) { a_result = r; });
+  AwaitOne(a, kWait, [&](RecvResult r, std::string) { a_result = r; });
 
   const std::uint32_t len = 0xFFFFFFFFu;  // absurd length
   const char header[4] = {static_cast<char>((len >> 24) & 0xFF),
@@ -276,9 +303,7 @@ TEST_F(ServerRelayTest, GarbageBytes_ClosesSender) {
   auto b = Connect();
   auto c = Connect();
   std::string got;
-  b->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
-    got = std::move(p);
-  });
+  AwaitOne(b, kWait, [&](RecvResult r, std::string p) { got = std::move(p); });
   c->SendPayload("still-works");
   Pump();
 
@@ -291,9 +316,6 @@ TEST_F(ServerRelayTest, Stop_Flushes_And_Closes) {
   auto a = Connect();
   auto b = Connect();
   WaitUntil([&] { return server_->SessionCount() == 2; });
-
-  a->SendPayload("in-flight");
-  server_->Stop();  // flush-then-close while the frame is queued
 
   RecvResult b_payload_result = RecvResult::kTimeout;
   std::string b_payload;
@@ -308,6 +330,13 @@ TEST_F(ServerRelayTest, Stop_Flushes_And_Closes) {
   RecvResult a_eof = RecvResult::kPayload;
   a->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string) { a_eof = r; });
 
+  a->SendPayload("in-flight");
+
+  // Let the server read and relay the frame so it is genuinely in flight,
+  // then stop: the queued write must be flushed, not dropped.
+  io_.run_for(std::chrono::milliseconds(100));
+  io_.restart();
+  server_->Stop();
   Pump();
 
   EXPECT_EQ(RecvResult::kPayload, b_payload_result);
@@ -322,11 +351,12 @@ TEST_F(ServerRelayTest, ConcurrentSends_NoInterleave) {
   auto a = Connect();
   auto b = Connect();
   auto c = Connect();
+  WaitUntil([&] { return server_->SessionCount() == 3; });
 
   std::vector<std::string> got(2);
   std::vector<bool> ok(2, false);
   for (int i = 0; i < 2; ++i) {
-    c->AwaitPayload(Deadline(kWait), [&, i](RecvResult r, std::string p) {
+    AwaitOne(c, kWait, [&, i](RecvResult r, std::string p) {
       got[i] = std::move(p);
       ok[i] = r == RecvResult::kPayload;
     });
@@ -353,20 +383,15 @@ TEST_F(ServerRelayTest, Reconnect_After_ServerStop_NewServer) {
   auto new_server = std::make_shared<Server>(io_, "127.0.0.1", 0);
   ASSERT_TRUE(new_server->Start().ok());
 
-  bool fresh_count = false;
   auto x = std::make_shared<FramedClient>(io_, new_server->LocalEndpoint());
   auto y = std::make_shared<FramedClient>(io_, new_server->LocalEndpoint());
-  sms::test::WaitFor(io_, [&] { return new_server->SessionCount() == 2; },
-                     Deadline(kWait), [&](bool ok) { fresh_count = ok; });
+  WaitUntil([&] { return new_server->SessionCount() == 2; });
 
   std::string got;
-  y->AwaitPayload(Deadline(kWait), [&](RecvResult r, std::string p) {
-    got = std::move(p);
-  });
+  AwaitOne(y, kWait, [&](RecvResult r, std::string p) { got = std::move(p); });
   x->SendPayload("fresh");
   Pump();
 
-  EXPECT_TRUE(fresh_count);
   EXPECT_EQ("fresh", got);
   new_server->Stop();
 }

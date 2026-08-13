@@ -232,17 +232,19 @@ inline void WaitFor(asio::io_context& io, std::function<bool()> predicate,
     state->expires_after(std::chrono::milliseconds(10));
     state->async_wait(*tick);
   };
-  (*tick)(asio::error_code());  // first poll immediately
+  // First poll is posted, not run inline, so the io_context is guaranteed to
+  // be running when the handler fires (a synchronous first tick could stop
+  // an io_context that has not started its run loop yet).
+  asio::post(io, [tick]() { (*tick)(asio::error_code()); });
 }
 
-// Runs `io` until all work completes or the watchdog fires, then resets it
-// for reuse. The watchdog is a last-resort hang guard: every test wait must
-// already have its own (shorter) deadline.
+// Runs `io` until its pending work completes or `wait` elapses, then resets
+// it for reuse. run_for's deadline is a last-resort hang guard — every test
+// wait must already have its own (shorter) deadline, and a plain run() would
+// otherwise be pinned open by any still-pending deadline timer.
 inline void Pump(asio::io_context& io,
                  std::chrono::milliseconds wait = std::chrono::milliseconds(6000)) {
-  asio::steady_timer watchdog(io, wait);
-  watchdog.async_wait([&io](const asio::error_code&) { io.stop(); });
-  io.run();
+  io.run_for(wait);
   io.restart();
 }
 
