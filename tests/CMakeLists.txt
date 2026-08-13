@@ -12,4 +12,4 @@ function(add_sms_unit_test name)
     WORKING_DIRECTORY $<TARGET_FILE_DIR:${name}>)
 endfunction()
 
-add_sms_unit_test(sms_unit_frame_codec unit/frame_codec_test.cpp)
+add_sms_unit_test(sms_unit_frame_codec_test unit/frame_codec_test.cpp)
