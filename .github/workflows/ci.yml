@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-format-18
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja clang-format
+
+      - name: Cache vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg.lock.md') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Configure
+        env:
+          VCPKG_BINARY_SOURCES: "files,${{ runner.temp }}/vcpkg-cache,readwrite"
+        run: cmake --preset ci
+
+      - name: Build
+        run: cmake --build --preset ci --parallel 4
+
+      - name: Unit + integration tests
+        run: ctest --preset ci --output-on-failure
+
+      - name: Format check
+        run: ./scripts/check-format.sh
+
+      - name: Upload binaries (serverd, sms-cli)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sms-${{ matrix.os }}
+          path: |
+            build/ci/apps/serverd/serverd
+            build/ci/apps/client-cli/sms-cli
