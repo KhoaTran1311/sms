@@ -74,3 +74,25 @@ target_include_directories(sms_integration_server PRIVATE ${CMAKE_CURRENT_SOURCE
 
 add_test(NAME sms_integration_server COMMAND sms_integration_server)
 set_tests_properties(sms_integration_server PROPERTIES LABELS "integration")
+
+# P0-14: end-to-end tests that spawn the real binaries. The ctest entry
+# exports the built paths via SMS_SERVERD_BIN / SMS_CLI_BIN (genexes are
+# expanded at test time), and the explicit dependency makes sure both
+# binaries exist before the test target builds.
+add_executable(sms_integration_client
+  integration/client_e2e_test.cpp)
+
+target_link_libraries(sms_integration_client PRIVATE
+  sms_client
+  sms_net
+  sms_common
+  GTest::gtest_main)
+
+target_include_directories(sms_integration_client PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_test(NAME sms_integration_client COMMAND sms_integration_client)
+set_tests_properties(sms_integration_client PROPERTIES
+  LABELS "integration"
+  ENVIRONMENT "SMS_SERVERD_BIN=$<TARGET_FILE:serverd>;SMS_CLI_BIN=$<TARGET_FILE:client-cli>")
+
+add_dependencies(sms_integration_client serverd client-cli)
