@@ -115,8 +115,16 @@ inline SpawnResult Spawn(const std::filesystem::path& executable,
   }
 
   if (pid == 0) {  // ---- child ----
+    // CLOEXEC on the pipe ends we keep open: they must die with execv, or
+    // the exec'd program would inherit the write end and the parent's
+    // blocking read on the error pipe would never see EOF. (FD_CLOEXEC only
+    // takes effect at exec, so a pre-exec failure can still report errno.)
+    fcntl(err_pipe[1], F_SETFD, FD_CLOEXEC);
     close(err_pipe[0]);
-    if (stdin_pipe[0] != -1) close(stdin_pipe[1]);  // parent keeps the write end
+    if (stdin_pipe[0] != -1) {
+      fcntl(stdin_pipe[0], F_SETFD, FD_CLOEXEC);
+      close(stdin_pipe[1]);  // parent keeps the write end
+    }
 
     auto fail = [&](FailStage stage) {
       const ExecFailure f{stage, errno};

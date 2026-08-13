@@ -39,6 +39,7 @@ namespace {
 
 using sms::test::process::Spawn;
 using sms::test::process::WaitPid;
+namespace process = sms::test::process;
 
 constexpr auto kReadyTimeout = std::chrono::milliseconds(10000);  // spawn readiness
 constexpr auto kCaseTimeout = std::chrono::milliseconds(5000);    // per-wait deadline
@@ -61,16 +62,16 @@ class ConnectPoller : public std::enable_shared_from_this<ConnectPoller> {
     return poller;
   }
 
+  // Drops the user callback and marks the poller done so a handler chain
+  // left behind by an early test exit becomes a no-op. Only runs once every
+  // chain that holds a shared_ptr has released it.
+  ~ConnectPoller() { done_ = true; handler_ = nullptr; }
+
  private:
   ConnectPoller(asio::io_context& io, const asio::ip::tcp::endpoint& endpoint,
                 Deadline deadline, std::function<void(bool)> handler)
       : io_(io), endpoint_(endpoint), deadline_(deadline),
         handler_(std::move(handler)), socket_(io), timer_(io) {}
-
-  // Drops the user callback and marks the poller done so a handler chain
-  // left behind by an early test exit becomes a no-op. Only runs once every
-  // chain that holds a shared_ptr has released it.
-  ~ConnectPoller() { done_ = true; handler_ = nullptr; }
 
   static bool Retryable(const asio::error_code& ec) {
     return ec == asio::error::connection_refused ||
@@ -217,15 +218,19 @@ class ServerdFixture : public ::testing::Test {
   }
 
   // Polls connect() until the daemon accepts (deadline-bounded, no sleeps).
+  // The ConnectPoller's own chain (connect attempts + retry timers) is the
+  // work source, so the pump returns right after the poller completes —
+  // never a fixed run_for window.
   bool WaitReady() {
     if (!daemon_running_) return false;
     bool ok = false;
     auto poller = ConnectPoller::Start(
         io_, Endpoint(), std::chrono::steady_clock::now() + kReadyTimeout,
         [&ok](bool ready) { ok = ready; });
-    io_.run_for(kReadyTimeout + std::chrono::seconds(1));
-    io_.restart();
-    return ok;
+    while (!ok) {
+      if (io_.run_one() == 0) io_.restart();
+    }
+    return true;
   }
 
   // SIGTERM (escalating to SIGKILL) the daemon and reap it. Every child is
@@ -267,15 +272,17 @@ class ServerdFixture : public ::testing::Test {
   }
 
   // Pumps io_ until `pred` is true or `timeout` elapses; deadline-timer
-  // driven (sms::test::WaitFor), never sleeps. Returns whether pred won.
+  // driven (sms::test::WaitFor keeps a 10 ms tick pending, so run_one()
+  // returns promptly on every event) — no sleeps, no fixed windows. Returns
+  // whether pred won before the deadline.
   bool RunUntil(std::function<bool()> pred, std::chrono::milliseconds timeout) {
-    bool done = false;
-    sms::test::WaitFor(
-        io_, std::move(pred), std::chrono::steady_clock::now() + timeout,
-        [&done](bool ok) { done = ok; });
-    io_.run_for(timeout + std::chrono::seconds(1));
-    io_.restart();
-    return done;
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    sms::test::WaitFor(io_, pred, deadline, [](bool) {});
+    while (!pred()) {
+      if (std::chrono::steady_clock::now() >= deadline) break;
+      if (io_.run_one() == 0) io_.restart();
+    }
+    return pred();
   }
 
   process::SpawnOptions SpawnOpts(const char* tag, bool pipe_stdin = false) {
