@@ -135,18 +135,18 @@ Unit tests use GoogleTest; integration tests run against real loopback sockets. 
 ## Status
 
 - [x] P0-01 — Repo bootstrap: CMake presets, vendored vcpkg manifest, layered source layout
-- [ ] P0-02 — Logging infrastructure (spdlog)
-- [ ] P0-03 — Frame codec
-- [ ] P0-04 — Frame codec tests
-- [ ] P0-05 — Error handling (`Result<T>`)
-- [ ] P0-06 — CI pipeline
-- [ ] P0-07 — Formatting hygiene
-- [ ] P0-08 — Server session
-- [ ] P0-09 — Server relay
+- [x] P0-02 — Logging infrastructure (spdlog)
+- [x] P0-03 — Frame codec
+- [x] P0-04 — Frame codec tests
+- [x] P0-05 — Error handling (`Result<T>`)
+- [x] P0-06 — CI pipeline
+- [x] P0-07 — Formatting hygiene
+- [x] P0-08 — Server session
+- [x] P0-09 — Server relay
 - [x] P0-10 — Server daemon
-- [ ] P0-11 — Server integration tests
-- [ ] P0-12 — Client core
-- [ ] P0-13 — Client CLI REPL
+- [x] P0-11 — Server integration tests
+- [x] P0-12 — Client core
+- [x] P0-13 — Client CLI REPL
 - [ ] P0-14 — Client integration tests
-- [ ] P0-15 — Demo script
+- [x] P0-15 — Demo script
 - [ ] P0-16 — README & phase review
