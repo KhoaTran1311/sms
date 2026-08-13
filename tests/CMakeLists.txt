@@ -42,3 +42,17 @@ target_link_libraries(sms_unit_server_start PRIVATE
 target_include_directories(sms_unit_server_start PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_test(NAME server_start_test COMMAND sms_unit_server_start)
+
+add_executable(sms_integration_server
+  integration/server_relay_test.cpp)
+
+target_link_libraries(sms_integration_server PRIVATE
+  sms_server
+  sms_net
+  sms_common
+  GTest::gtest_main)
+
+target_include_directories(sms_integration_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_test(NAME sms_integration_server COMMAND sms_integration_server)
+set_tests_properties(sms_integration_server PROPERTIES LABELS "integration")
