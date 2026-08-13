@@ -13,11 +13,10 @@
 using namespace sms::common;
 
 namespace {
-
 std::string LogPath(const std::string& name) {
   return (std::filesystem::path(testing::TempDir()) /
-          ("sms_" + name + "_" + std::to_string(::getpid()) + ".log"))
-      .string();
+      ("sms_" + name + "_" + std::to_string(::getpid()) + ".log"))
+    .string();
 }
 
 std::string ReadFile(const std::string& path) {
@@ -36,30 +35,29 @@ int CountFilesWithPrefix(const std::string& path) {
 }
 
 class LogTest : public ::testing::Test {
- protected:
+protected:
   void TearDown() override { spdlog::shutdown(); }
 };
-
-}  // namespace
+} // namespace
 
 TEST_F(LogTest, ParseLogLevel_Valid_ReturnsTrue) {
-  LogLevel out = LogLevel::kOff;
+  LogLevel out = LogLevel::Off;
   EXPECT_TRUE(ParseLogLevel("trace", &out));
-  EXPECT_EQ(out, LogLevel::kTrace);
+  EXPECT_EQ(out, LogLevel::Trace);
   EXPECT_TRUE(ParseLogLevel("debug", &out));
-  EXPECT_EQ(out, LogLevel::kDebug);
+  EXPECT_EQ(out, LogLevel::Debug);
   EXPECT_TRUE(ParseLogLevel("info", &out));
-  EXPECT_EQ(out, LogLevel::kInfo);
+  EXPECT_EQ(out, LogLevel::Info);
   EXPECT_TRUE(ParseLogLevel("warn", &out));
-  EXPECT_EQ(out, LogLevel::kWarn);
+  EXPECT_EQ(out, LogLevel::Warn);
   EXPECT_TRUE(ParseLogLevel("error", &out));
-  EXPECT_EQ(out, LogLevel::kError);
+  EXPECT_EQ(out, LogLevel::Error);
   EXPECT_TRUE(ParseLogLevel("off", &out));
-  EXPECT_EQ(out, LogLevel::kOff);
+  EXPECT_EQ(out, LogLevel::Off);
 }
 
 TEST_F(LogTest, ParseLogLevel_Invalid_ReturnsFalse) {
-  LogLevel out = LogLevel::kInfo;
+  LogLevel out = LogLevel::Info;
   EXPECT_FALSE(ParseLogLevel("verbose", &out));
   EXPECT_FALSE(ParseLogLevel("", &out));
   EXPECT_FALSE(ParseLogLevel("INFO", &out));
@@ -68,7 +66,7 @@ TEST_F(LogTest, ParseLogLevel_Invalid_ReturnsFalse) {
 TEST_F(LogTest, InitClientLogging_WritesFile_Only) {
   const std::string path = LogPath("client_only");
   testing::internal::CaptureStdout();
-  InitClientLogging(LogLevel::kInfo, path);
+  InitClientLogging(LogLevel::Info, path);
   SMS_LOG_INFO("client_only_marker");
   const std::string captured = testing::internal::GetCapturedStdout();
   spdlog::shutdown();
@@ -80,7 +78,7 @@ TEST_F(LogTest, InitClientLogging_WritesFile_Only) {
 
 TEST_F(LogTest, InitServerLogging_RespectsLevel) {
   const std::string path = LogPath("server_level");
-  InitServerLogging(LogLevel::kWarn, path);
+  InitServerLogging(LogLevel::Warn, path);
   SMS_LOG_INFO("info_marker_absent");
   SMS_LOG_WARN("warn_marker_present");
   SMS_LOG_ERROR("error_marker_present");
@@ -94,8 +92,8 @@ TEST_F(LogTest, InitServerLogging_RespectsLevel) {
 TEST_F(LogTest, InitLogging_IsIdempotent) {
   const std::string first = LogPath("idem_first");
   const std::string second = LogPath("idem_second");
-  InitServerLogging(LogLevel::kInfo, first);
-  InitClientLogging(LogLevel::kInfo, second);
+  InitServerLogging(LogLevel::Info, first);
+  InitClientLogging(LogLevel::Info, second);
   SMS_LOG_INFO("idempotency_marker");
   spdlog::shutdown();
   EXPECT_TRUE(std::filesystem::exists(first));
@@ -106,7 +104,7 @@ TEST_F(LogTest, InitLogging_IsIdempotent) {
 
 TEST_F(LogTest, RotatingSink_LargeLog_Rotates) {
   const std::string path = LogPath("rotating");
-  InitClientLogging(LogLevel::kInfo, path);
+  InitClientLogging(LogLevel::Info, path);
   const std::string chunk(64 * 1024, 'x');
   for (int i = 0; i < 84; ++i) {
     SMS_LOG_INFO("{}", chunk);

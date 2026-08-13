@@ -6,18 +6,16 @@
 #include <spdlog/spdlog.h>
 
 namespace sms::common {
-
-enum class LogLevel { kTrace, kDebug, kInfo, kWarn, kError, kOff };
+enum class LogLevel { Trace, Debug, Info, Warn, Error, Off };
 
 // Parses "trace|debug|info|warn|error|off"; returns false on unknown input.
 bool ParseLogLevel(std::string_view text, LogLevel* out);
 
 // Idempotent. Server: stdout color + optional rotating file sink.
-void InitServerLogging(LogLevel level, const std::string& log_file = {});
+void InitServerLogging(LogLevel level, const std::string& log_file = { });
 // Idempotent. Client: file sink only (never console). Default: sms-client.log.
-void InitClientLogging(LogLevel level, const std::string& log_file = {});
-
-}  // namespace sms::common
+void InitClientLogging(LogLevel level, const std::string& log_file = { });
+} // namespace sms::common
 
 #define SMS_LOG_TRACE(...) \
   SPDLOG_LOGGER_CALL(spdlog::get("sms"), spdlog::level::trace, __VA_ARGS__)
