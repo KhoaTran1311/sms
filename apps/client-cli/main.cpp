@@ -99,34 +99,38 @@ int main(int argc, char** argv) {
     auto read_line = [&](auto&& self) -> void {
       asio::async_read_until(
           stdin_, asio::dynamic_buffer(line), '\n',
-          [&, self](const asio::error_code& ec, std::size_t) {
+          [&, self](const asio::error_code& ec, std::size_t n) {
             if (ec) {  // EOF (Ctrl-D) or cancelled by on_close
               client->Disconnect();
               return;
             }
-            if (!line.empty() && line.back() == '\n') line.pop_back();
-            if (!line.empty() && line.back() == '\r') line.pop_back();
+            // The dynamic buffer holds everything read so far; only the
+            // first n bytes end at the delimiter, so consume exactly those
+            // and keep any later lines buffered for the next read.
+            std::string input = line.substr(0, n);
+            line.erase(0, n);
+            if (!input.empty() && input.back() == '\n') input.pop_back();
+            if (!input.empty() && input.back() == '\r') input.pop_back();
 
-            if (line == "/quit") {
+            if (input == "/quit") {
               client->Disconnect();
               return;
             }
-            if (line == "/help") {
+            if (input == "/help") {
               std::cout << kUsage << "> " << std::flush;
-            } else if (line == "/whoami") {
+            } else if (input == "/whoami") {
               std::cout << "connected to " << host << ":" << port
                         << "\n> " << std::flush;
-            } else if (line.rfind("/", 0) == 0) {
-              std::cout << "unknown command: " << line
+            } else if (input.rfind("/", 0) == 0) {
+              std::cout << "unknown command: " << input
                         << " (try /help)\n> " << std::flush;
             } else {
-              auto result = client->Send(line);
+              auto result = client->Send(input);
               if (!result.ok()) {
                 std::cout << "send failed: " << result.error().message
                           << "\n> " << std::flush;
               }
             }
-            line.clear();
             self(self);
           });
     };
