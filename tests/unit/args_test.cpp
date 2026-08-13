@@ -14,6 +14,7 @@ std::vector<const char*> ToArgv(const std::vector<std::string>& args,
   argv.reserve(args.size());
   for (const std::string& s : args) {
     storage->push_back(const_cast<char*>(s.c_str()));
+    argv.push_back(storage->back());
   }
   return argv;
 }
