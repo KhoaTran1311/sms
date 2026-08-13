@@ -51,3 +51,12 @@ target_link_libraries(sms_unit_client PRIVATE
   GTest::gtest_main)
 
 add_test(NAME client_test COMMAND sms_unit_client)
+
+add_executable(sms_unit_args
+  unit/args_test.cpp)
+
+target_link_libraries(sms_unit_args PRIVATE
+  sms_common
+  GTest::gtest_main)
+
+add_test(NAME args_test COMMAND sms_unit_args)
