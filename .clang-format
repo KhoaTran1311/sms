@@ -1,0 +1,7 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+AllowShortFunctionsOnASingleLine: Empty
+DerivePointerAlignment: false
+PointerAlignment: Left
