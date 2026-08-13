@@ -147,6 +147,6 @@ Unit tests use GoogleTest; integration tests run against real loopback sockets. 
 - [x] P0-11 — Server integration tests
 - [x] P0-12 — Client core
 - [x] P0-13 — Client CLI REPL
-- [ ] P0-14 — Client integration tests
+- [x] P0-14 — Client integration tests
 - [x] P0-15 — Demo script
 - [ ] P0-16 — README & phase review
