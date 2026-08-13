@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace sms::server {
 
@@ -84,9 +85,15 @@ void Server::DoAccept() {
 void Server::OnMessage(std::shared_ptr<Session> from, std::string payload) {
   SMS_LOG_DEBUG("relaying {} bytes from session {} to {} peer(s)", payload.size(),
                 from->id(), sessions_.size() - 1);
+  // Session::Send carries raw wire bytes (P0-08: "encoding lives at the
+  // relay boundary"); re-encode so peers receive a well-formed frame.
+  sms::net::FrameCodec codec;
+  std::vector<std::uint8_t> wire;
+  if (!codec.Encode(payload, &wire)) return;  // unreachable: ingress is capped at 64 KiB
+  const std::string frame(wire.begin(), wire.end());
   for (const auto& session : sessions_) {
     if (session == from) continue;  // relay excludes origin
-    session->Send(payload);
+    session->Send(frame);
   }
 }
 
