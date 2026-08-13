@@ -144,7 +144,7 @@ Unit tests use GoogleTest; integration tests run against real loopback sockets. 
 - [ ] P0-08 — Server session
 - [ ] P0-09 — Server relay
 - [ ] P0-10 — Server daemon
-- [ ] P0-11 — Server integration tests
+- [x] P0-11 — Server integration tests
 - [ ] P0-12 — Client core
 - [ ] P0-13 — Client CLI REPL
 - [ ] P0-14 — Client integration tests
